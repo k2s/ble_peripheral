@@ -529,10 +529,10 @@ namespace ble_peripheral
       deferral.Complete();
       co_return;
     }
-
     std::string deviceId = ParseBluetoothClientId(args.Session().DeviceId().Id());
     int64_t offset = request.Offset();
-  
+    uiThreadHandler_.Post([deviceId, characteristicId, offset, value_arg, deferral, request]
+    
     uiThreadHandler_.Post([deviceId, characteristicId, offset, value_arg, deferral, request]
                           {
                             bleCallback->OnReadRequest(
