@@ -63,8 +63,9 @@ fun BleCharacteristic.toGattCharacteristic(): BluetoothGattCharacteristic {
 
     addCCDescriptorIfRequired(this, char)
 
-    if (bluetoothGattCharacteristics[uuid] == null) {
-        bluetoothGattCharacteristics[uuid] = char
+    val normalizedUuid = uuid.lowercase()
+    if (bluetoothGattCharacteristics[normalizedUuid] == null) {
+        bluetoothGattCharacteristics[normalizedUuid] = char
     }
     return char
 }
@@ -125,12 +126,12 @@ fun BleDescriptor.toGattDescriptor(): BluetoothGattDescriptor {
 }
 
 fun String.findCharacteristic(): BluetoothGattCharacteristic? {
-    return bluetoothGattCharacteristics[this]
+    return bluetoothGattCharacteristics[this.lowercase()]
 }
 
 fun String.findService(): BluetoothGattService? {
     for (char in bluetoothGattCharacteristics.values) {
-        if (char.service?.uuid.toString() == this) {
+        if (char.service?.uuid?.toString()?.lowercase() == this.lowercase()) {
             return char.service
         }
     }

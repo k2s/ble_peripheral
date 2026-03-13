@@ -12,6 +12,7 @@ import android.bluetooth.BluetoothGattServer
 import android.bluetooth.BluetoothGattServerCallback
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
@@ -29,10 +30,18 @@ import androidx.core.app.ActivityCompat
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import java.util.ArrayDeque
 import java.util.Collections
 import android.content.Context.RECEIVER_EXPORTED
 
 private const val TAG = "BlePeripheralPlugin"
+
+private data class PendingCharacteristicUpdate(
+    val device: BluetoothDevice,
+    val characteristic: BluetoothGattCharacteristic,
+    val value: ByteArray,
+    val confirm: Boolean,
+)
 
 @SuppressLint("MissingPermission")
 class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
@@ -50,6 +59,9 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
     private val emptyBytes = byteArrayOf()
     private val listOfDevicesWaitingForBond = mutableListOf<String>()
     private var isAdvertising: Boolean? = null
+    private val pendingCharacteristicUpdates = ArrayDeque<PendingCharacteristicUpdate>()
+    private var characteristicUpdateInFlight = false
+    private var activeCharacteristicUpdate: PendingCharacteristicUpdate? = null
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         BlePeripheralChannel.setUp(flutterPluginBinding.binaryMessenger, this)
@@ -102,6 +114,11 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
 
     override fun clearServices() {
         gattServer?.clearServices()
+        synchronized(pendingCharacteristicUpdates) {
+            pendingCharacteristicUpdates.clear()
+            characteristicUpdateInFlight = false
+            activeCharacteristicUpdate = null
+        }
     }
 
     override fun getServices(): List<String> {
@@ -185,26 +202,94 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
     ) {
         val char =
             characteristicId.findCharacteristic() ?: throw Exception("Characteristic not found")
-        char.value = value
+        val confirm =
+            char.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0
         if (deviceId != null) {
             val device = bluetoothDevicesMap[deviceId] ?: throw Exception("Device not found")
-            handler?.post {
-                gattServer?.notifyCharacteristicChanged(
-                    device,
-                    char,
-                    true
-                )
-            }
+            enqueueCharacteristicUpdate(device, char, value, confirm)
         } else {
             bluetoothDevicesMap.forEach { (_, device) ->
-                handler?.post {
-                    gattServer?.notifyCharacteristicChanged(
-                        device,
-                        char,
-                        true
-                    )
-                }
+                enqueueCharacteristicUpdate(device, char, value, confirm)
             }
+        }
+    }
+
+    private fun enqueueCharacteristicUpdate(
+        device: BluetoothDevice,
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray,
+        confirm: Boolean,
+    ) {
+        synchronized(pendingCharacteristicUpdates) {
+            pendingCharacteristicUpdates.addLast(
+                PendingCharacteristicUpdate(
+                    device = device,
+                    characteristic = characteristic,
+                    value = value.copyOf(),
+                    confirm = confirm
+                )
+            )
+        }
+        handler?.post {
+            drainCharacteristicUpdates()
+        }
+    }
+
+    private fun drainCharacteristicUpdates() {
+        val nextUpdate: PendingCharacteristicUpdate = synchronized(pendingCharacteristicUpdates) {
+            if (characteristicUpdateInFlight) {
+                return
+            }
+            val next = pendingCharacteristicUpdates.removeFirstOrNull() ?: return
+            characteristicUpdateInFlight = true
+            activeCharacteristicUpdate = next
+            next
+        }
+
+        sendCharacteristicUpdate(nextUpdate)
+    }
+
+    private fun sendCharacteristicUpdate(update: PendingCharacteristicUpdate) {
+        val char = update.characteristic
+        char.value = update.value
+
+        val sendSucceeded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val status = gattServer?.notifyCharacteristicChanged(
+                update.device,
+                char,
+                update.confirm,
+                update.value
+            )
+            status == BluetoothStatusCodes.SUCCESS
+        } else {
+            @Suppress("DEPRECATION")
+            gattServer?.notifyCharacteristicChanged(
+                update.device,
+                char,
+                update.confirm
+            ) ?: false
+        }
+
+        if (!sendSucceeded) {
+            Log.e(
+                TAG,
+                "notifyCharacteristicChanged failed for ${update.device.address} ${char.uuid}"
+            )
+            markCharacteristicUpdateFinished(update.device.address)
+            handler?.post {
+                drainCharacteristicUpdates()
+            }
+        }
+    }
+
+    private fun markCharacteristicUpdateFinished(deviceAddress: String?) {
+        synchronized(pendingCharacteristicUpdates) {
+            val active = activeCharacteristicUpdate
+            if (deviceAddress != null && active?.device?.address != deviceAddress) {
+                return
+            }
+            activeCharacteristicUpdate = null
+            characteristicUpdateInFlight = false
         }
     }
 
@@ -252,6 +337,13 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
             }
         }
         subscribedCharDevicesMap.remove(deviceAddress)
+        synchronized(pendingCharacteristicUpdates) {
+            pendingCharacteristicUpdates.removeAll { it.device.address == deviceAddress }
+        }
+        markCharacteristicUpdateFinished(deviceAddress)
+        handler?.post {
+            drainCharacteristicUpdates()
+        }
     }
 
     private val advertiseCallback: AdvertiseCallback = object : AdvertiseCallback() {
@@ -512,6 +604,10 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
                         TAG,
                         "onNotificationSentFailed:${device?.address} ${device?.name}, Status: $status"
                     )
+                }
+                markCharacteristicUpdateFinished(device?.address)
+                handler?.post {
+                    drainCharacteristicUpdates()
                 }
             }
         }
