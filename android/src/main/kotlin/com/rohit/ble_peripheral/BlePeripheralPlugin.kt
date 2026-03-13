@@ -240,7 +240,7 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
             if (characteristicUpdateInFlight) {
                 return
             }
-            val next = pendingCharacteristicUpdates.removeFirstOrNull() ?: return
+            val next = pendingCharacteristicUpdates.pollFirst() ?: return
             characteristicUpdateInFlight = true
             activeCharacteristicUpdate = next
             next
