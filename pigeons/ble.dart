@@ -35,7 +35,7 @@ class BleCharacteristic {
   List<int> permissions;
   List<BleDescriptor>? descriptors;
   Uint8List? value;
-  
+
   BleCharacteristic(
     this.uuid,
     this.value,
@@ -92,6 +92,8 @@ abstract class BlePeripheralChannel {
   void clearServices();
 
   List<String> getServices();
+
+  void setBondingEnabled(bool enabled);
 
   void startAdvertising(
     List<String> services,

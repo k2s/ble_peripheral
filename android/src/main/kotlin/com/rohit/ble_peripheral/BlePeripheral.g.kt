@@ -303,6 +303,7 @@ interface BlePeripheralChannel {
   fun removeService(serviceId: String)
   fun clearServices()
   fun getServices(): List<String>
+  fun setBondingEnabled(enabled: Boolean)
   fun startAdvertising(services: List<String>, localName: String?, timeout: Long?, manufacturerData: ManufacturerData?, addManufacturerDataInScanResponse: Boolean)
   fun updateCharacteristic(characteristicId: String, value: ByteArray, deviceId: String?)
 
@@ -450,6 +451,24 @@ interface BlePeripheralChannel {
           channel.setMessageHandler { _, reply ->
             val wrapped: List<Any?> = try {
               listOf(api.getServices())
+            } catch (exception: Throwable) {
+              wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ble_peripheral.BlePeripheralChannel.setBondingEnabled$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val enabledArg = args[0] as Boolean
+            val wrapped: List<Any?> = try {
+              api.setBondingEnabled(enabledArg)
+              listOf(null)
             } catch (exception: Throwable) {
               wrapError(exception)
             }

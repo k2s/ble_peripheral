@@ -114,6 +114,7 @@ namespace ble_peripheral
         std::optional<FlutterError> RemoveService(const std::string &service_id);
         std::optional<FlutterError> ClearServices();
         ErrorOr<flutter::EncodableList> GetServices();
+        std::optional<FlutterError> SetBondingEnabled(bool enabled);
         std::optional<FlutterError> StartAdvertising(
             const flutter::EncodableList &services,
             const std::string *local_name,

@@ -324,6 +324,7 @@ class BlePeripheralChannel {
   virtual std::optional<FlutterError> RemoveService(const std::string& service_id) = 0;
   virtual std::optional<FlutterError> ClearServices() = 0;
   virtual ErrorOr<flutter::EncodableList> GetServices() = 0;
+  virtual std::optional<FlutterError> SetBondingEnabled(bool enabled) = 0;
   virtual std::optional<FlutterError> StartAdvertising(
     const flutter::EncodableList& services,
     const std::string* local_name,

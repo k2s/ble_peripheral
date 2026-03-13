@@ -35,6 +35,7 @@ class HomeView extends GetView<HomeController> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     const ElevatedButton(
+                      // ignore: deprecated_member_use
                       onPressed: BlePeripheral.askBlePermission,
                       child: Text('Ask Permission'),
                     ),

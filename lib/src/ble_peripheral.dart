@@ -55,6 +55,10 @@ class BlePeripheral {
   /// Get list of services added to the peripheral
   static Future<List<String>> getServices() => _platform.getServices();
 
+  /// Configure whether Android should request BLE bonding on connect.
+  static Future<void> setBondingEnabled(bool enabled) =>
+      _platform.setBondingEnabled(enabled);
+
   /// To update the value of a characteristic
   static Future<void> updateCharacteristic({
     required String characteristicId,

@@ -59,6 +59,7 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
     private val emptyBytes = byteArrayOf()
     private val listOfDevicesWaitingForBond = mutableListOf<String>()
     private var isAdvertising: Boolean? = null
+    private var bondingEnabled = true
     private val pendingCharacteristicUpdates = ArrayDeque<PendingCharacteristicUpdate>()
     private var characteristicUpdateInFlight = false
     private var activeCharacteristicUpdate: PendingCharacteristicUpdate? = null
@@ -125,6 +126,13 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
         return gattServer?.services?.map {
             it.uuid.toString()
         } ?: emptyList()
+    }
+
+    override fun setBondingEnabled(enabled: Boolean) {
+        bondingEnabled = enabled
+        if (!enabled) {
+            listOfDevicesWaitingForBond.clear()
+        }
     }
 
     override fun startAdvertising(
@@ -346,6 +354,15 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
         }
     }
 
+    private fun completeConnection(device: BluetoothDevice) {
+        handler?.post {
+            gattServer?.connect(device, true)
+        }
+        synchronized(bluetoothDevicesMap) {
+            bluetoothDevicesMap[device.address] = device
+        }
+    }
+
     private val advertiseCallback: AdvertiseCallback = object : AdvertiseCallback() {
         override fun onStartFailure(errorCode: Int) {
             super.onStartFailure(errorCode)
@@ -382,26 +399,21 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
                 super.onConnectionStateChange(device, status, newState)
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
-                        if (device.bondState == BluetoothDevice.BOND_NONE) {
+                        if (!bondingEnabled) {
+                            completeConnection(device)
+                        } else if (device.bondState == BluetoothDevice.BOND_NONE) {
                             // Wait for bonding
                             listOfDevicesWaitingForBond.add(device.address)
                             device.createBond()
                         } else if (device.bondState == BluetoothDevice.BOND_BONDED) {
-                            handler?.post {
-                                gattServer?.connect(device, true)
-                            }
-                            synchronized(bluetoothDevicesMap) {
-                                bluetoothDevicesMap.put(
-                                    device.address,
-                                    device
-                                )
-                            }
+                            completeConnection(device)
                         }
                         onConnectionUpdate(device, status, newState)
                     }
 
                     BluetoothProfile.STATE_DISCONNECTED -> {
                         val deviceAddress = device.address
+                        listOfDevicesWaitingForBond.remove(deviceAddress)
                         synchronized(bluetoothDevicesMap) { bluetoothDevicesMap.remove(deviceAddress) }
                         onConnectionUpdate(device, status, newState)
                     }
@@ -685,11 +697,9 @@ class BlePeripheralPlugin : FlutterPlugin, BlePeripheralChannel, ActivityAware {
 
                 // if waiting for connection and device is bonded
                 val waitingForConnection = listOfDevicesWaitingForBond.contains(device?.address)
-                if (state == BluetoothDevice.BOND_BONDED && device != null && waitingForConnection) {
+                if (bondingEnabled && state == BluetoothDevice.BOND_BONDED && device != null && waitingForConnection) {
                     listOfDevicesWaitingForBond.remove(device.address)
-                    handler?.post {
-                        gattServer?.connect(device, true)
-                    }
+                    completeConnection(device)
                 }
             }
         }

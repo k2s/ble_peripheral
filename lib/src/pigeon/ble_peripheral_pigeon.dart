@@ -75,6 +75,11 @@ class BlePeripheralPigeon extends BlePeripheralInterface {
   @override
   Future<List<String>> getServices() => _channel.getServices();
 
+  @override
+  Future<void> setBondingEnabled(bool enabled) {
+    return _channel.setBondingEnabled(enabled);
+  }
+
   /// To update the value of a characteristic
   @override
   Future<void> updateCharacteristic({

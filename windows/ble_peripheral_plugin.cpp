@@ -125,6 +125,12 @@ namespace ble_peripheral
     return services;
   }
 
+  std::optional<FlutterError> BlePeripheralPlugin::SetBondingEnabled(bool enabled)
+  {
+    (void)enabled;
+    return std::nullopt;
+  }
+
   std::optional<FlutterError> BlePeripheralPlugin::StartAdvertising(
       const flutter::EncodableList &services,
       const std::string *local_name,

@@ -25,6 +25,10 @@ abstract class BlePeripheralInterface {
     throw UnimplementedError();
   }
 
+  Future<void> setBondingEnabled(bool enabled) {
+    throw UnimplementedError();
+  }
+
   Future<void> updateCharacteristic({
     required String characteristicId,
     required Uint8List value,

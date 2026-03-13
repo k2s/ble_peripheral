@@ -332,6 +332,7 @@ protocol BlePeripheralChannel {
   func removeService(serviceId: String) throws
   func clearServices() throws
   func getServices() throws -> [String]
+  func setBondingEnabled(enabled: Bool) throws
   func startAdvertising(services: [String], localName: String?, timeout: Int64?, manufacturerData: ManufacturerData?, addManufacturerDataInScanResponse: Bool) throws
   func updateCharacteristic(characteristicId: String, value: FlutterStandardTypedData, deviceId: String?) throws
 }
@@ -462,6 +463,21 @@ class BlePeripheralChannelSetup {
       }
     } else {
       getServicesChannel.setMessageHandler(nil)
+    }
+    let setBondingEnabledChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.ble_peripheral.BlePeripheralChannel.setBondingEnabled\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setBondingEnabledChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let enabledArg = args[0] as! Bool
+        do {
+          try api.setBondingEnabled(enabled: enabledArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setBondingEnabledChannel.setMessageHandler(nil)
     }
     let startAdvertisingChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.ble_peripheral.BlePeripheralChannel.startAdvertising\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
